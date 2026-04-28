@@ -46,7 +46,7 @@ EXTRA_COLUMNS_DEFAULTS = {
     "Qtd Preditivas Realizadas": 0,
     "Qtd Preditivas Previstas Hoje": 0,
     "Qtd Preditivas Em Dia": 0,
-    "Qtd Preditivas Em Filas": 0,
+    "Qtd Preditivas Atrasadas": 0,
     "Preditivas Pendentes": 0,
     "Próxima Preditiva Prevista": "-",
     "Pode Confirmar Preventiva": "NÃO",
@@ -181,7 +181,7 @@ def calcular_info_linha(row, hoje=None):
             break
 
     if dias_proxima < 0:
-        faixa = "Em Fila"
+        faixa = "Atrasada"
     elif dias_proxima <= 15:
         faixa = "0-15 dias"
     elif dias_proxima <= 30:
@@ -221,7 +221,7 @@ def calcular_info_linha(row, hoje=None):
         "Qtd Preditivas Realizadas": realizadas,
         "Qtd Preditivas Previstas Hoje": previstas,
         "Qtd Preditivas Em Dia": em_dia,
-        "Qtd Preditivas Em Filas": atrasadas,
+        "Qtd Preditivas Atrasadas": atrasadas,
         "Preditivas Pendentes": pendentes_total,
         "Próxima Preditiva Prevista": proxima_pred_desc,
         "Pode Confirmar Preventiva": "SIM" if todas_preds else "NÃO",
@@ -252,7 +252,7 @@ def dataframe_para_excel(df):
 def mostrar_metricas(df_filtrado):
     total_ativos = int(df_filtrado["PLACA"].nunique()) if not df_filtrado.empty else 0
     total_preventivas_em_dia = int((df_filtrado["Status Preventiva"] == "EM DIA").sum())
-    total_preditivas_em_dia = int((df_filtrado["Qtd Preditivas Em Filas"] == 0).sum())
+    total_preditivas_em_dia = int((df_filtrado["Qtd Preditivas Atrasadas"] == 0).sum())
     total_preventivas_em_fila = int((df_filtrado["Status Preventiva"] == "ATRASADA").sum())
     pct_preventivas_em_dia = (total_preventivas_em_dia / total_ativos * 100) if total_ativos else 0
 
@@ -288,7 +288,7 @@ def dashboard(df):
     mostrar_metricas(df_f)
     st.divider()
 
-    faixa_order = ["Em Fila", "0-15 dias", "16-30 dias", "31-60 dias", "61-120 dias", ">120 dias"]
+    faixa_order = ["Atrasada", "0-15 dias", "16-30 dias", "31-60 dias", "61-120 dias", ">120 dias"]
     faixa_counts = (
         df_f["Faixa"].value_counts().rename_axis("Faixa").reset_index(name="Quantidade")
         if not df_f.empty else pd.DataFrame({"Faixa": [], "Quantidade": []})
@@ -318,17 +318,17 @@ def dashboard(df):
     with top_cols[1]:
         st.subheader("Distribuição de Preditivas e Preventivas")
         total_ativos = int(df_f["PLACA"].nunique()) if not df_f.empty else 0
-        pred_atrasadas = int((df_f["Qtd Preditivas Em Filas"] > 0).sum()) if "Qtd Preditivas Em Filas" in df_f.columns else 0
+        pred_atrasadas = int((df_f["Qtd Preditivas Atrasadas"] > 0).sum()) if "Qtd Preditivas Atrasadas" in df_f.columns else 0
         pred_em_dia = max(total_ativos - pred_atrasadas, 0)
         prev_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
         prev_em_dia = max(total_ativos - prev_atrasadas, 0)
 
         pred_data = pd.DataFrame({
-            "Status": ["Preditivas Em Filas", "Preditivas em Dia"],
+            "Status": ["Preditivas Atrasadas", "Preditivas em Dia"],
             "Quantidade": [pred_atrasadas, pred_em_dia],
         })
         prev_data = pd.DataFrame({
-            "Status": ["Preventivas Em Filas", "Preventivas em Dia"],
+            "Status": ["Preventivas Atrasadas", "Preventivas em Dia"],
             "Quantidade": [prev_atrasadas, prev_em_dia],
         })
 
@@ -342,7 +342,7 @@ def dashboard(df):
                 hole=0.45,
                 color="Status",
                 color_discrete_map={
-                    "Preditivas Em Filas": "#DD8452",
+                    "Preditivas Atrasadas": "#DD8452",
                     "Preditivas em Dia": "#4C72B0",
                 },
             )
@@ -359,7 +359,7 @@ def dashboard(df):
                 hole=0.45,
                 color="Status",
                 color_discrete_map={
-                    "Preventivas Em Filas": "#C44E52",
+                    "Preventivas Atrasadas": "#C44E52",
                     "Preventivas em Dia": "#55A868",
                 },
             )
@@ -369,7 +369,7 @@ def dashboard(df):
 
         resumo_pizza = pd.DataFrame({
             "Tipo": ["Preditivas", "Preditivas", "Preventivas", "Preventivas"],
-            "Status": ["Em Filas", "Em Dia", "Em Filas", "Em Dia"],
+            "Status": ["Atrasadas", "Em Dia", "Atrasadas", "Em Dia"],
             "Quantidade": [pred_atrasadas, pred_em_dia, prev_atrasadas, prev_em_dia],
             "Percentual": [
                 (pred_atrasadas / total_ativos * 100) if total_ativos else 0,
@@ -383,14 +383,14 @@ def dashboard(df):
 
     st.subheader("📊 Consolidado de atrasos, preditivas e preventivas")
     preventivas_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
-    preditivas_atrasadas = int((df_f["Qtd Preditivas Em Filas"] > 0).sum()) if "Qtd Preditivas Em Filas" in df_f.columns else 0
+    preventivas_em_dia = int((df_f["Status Preventiva"] == "EM DIA").sum())
+    preditivas_atrasadas = int((df_f["Qtd Preditivas Atrasadas"] > 0).sum()) if "Qtd Preditivas Atrasadas" in df_f.columns else 0
     preventivas_realizadas = int(pd.to_numeric(df_f.get(CYCLE_COL, 0), errors="coerce").fillna(0).sum())
 
-    
     grafico_data = pd.DataFrame({
         "Faixa / Indicador": [
-            "Preventivas em Fila",
-            "Preditivas em Fila",
+            "Preventivas atrasadas",
+            "Preditivas atrasadas",
             "0-15",
             "16-30",
             "31-45",
@@ -401,29 +401,29 @@ def dashboard(df):
             "Preventivas em Dia",
         ],
         "Quantidade": [
-            preventivas_em_fila,
-            preditivas_em_fila,
-            qtd_0_15,
-            qtd_16_30,
-            qtd_31_45,
-            qtd_46_60,
-            qtd_61_75,
-            qtd_76_90,
-            qtd_91_105,
+            preventivas_atrasadas,
+            preditivas_atrasadas,
+            int((df_f[PRED_COLS[0]] == "SIM").sum()),
+            int((df_f[PRED_COLS[1]] == "SIM").sum()),
+            int((df_f[PRED_COLS[2]] == "SIM").sum()),
+            int((df_f[PRED_COLS[3]] == "SIM").sum()),
+            int((df_f[PRED_COLS[4]] == "SIM").sum()),
+            int((df_f[PRED_COLS[5]] == "SIM").sum()),
+            int((df_f[PRED_COLS[6]] == "SIM").sum()),
             preventivas_em_dia,
         ],
         "Tipo": [
+            "Atrasos Preventiva",
+            "Atrasos Preditiva",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
             "Preventivas",
-            "Preditivas",
-            "Preditivas",
-            "Preditivas",
-            "Preditivas",
-            "Preditivas",
-            "Preditivas",
-            "Preditivas",
-            "Preditivas",
-            "Preventivas",
-        ]
+        ],
     })
 
     ordem_x = list(grafico_data["Faixa / Indicador"])
@@ -454,16 +454,16 @@ def dashboard(df):
     st.plotly_chart(fig_consolidado, use_container_width=True)
     st.dataframe(grafico_data, use_container_width=True, hide_index=True)
 
-    st.subheader("📈 Plano de recuperação das preventivas em fila")
+    st.subheader("📈 Plano de recuperação das preventivas atrasadas")
     st.caption(
         "A linha azul mostra o ritmo atual de regularização, a verde mostra a meta, "
-        "e a cinza mostra o total de preventivas em fila que precisa ser zerado. "
+        "e a cinza mostra o total de preventivas atrasadas que precisa ser zerado. "
         "As datas estimadas consideram segunda a sábado como dias operacionais e ignoram domingo."
     )
 
     pendentes = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
     if pendentes == 0:
-        st.success("✅ Não há preventivas em fila no filtro atual.")
+        st.success("✅ Não há preventivas atrasadas no filtro atual.")
     else:
         meta_por_dia = 3
         ritmo_atual = 1
@@ -500,9 +500,9 @@ def dashboard(df):
             x=datas,
             y=total_atrasadas,
             mode="lines",
-            name="Total de Em Filas",
+            name="Total de Atrasadas",
             line=dict(color="#7F7F7F", width=2, dash="dash"),
-            hovertemplate="%{x|%d/%m/%Y}<br>Total de Em Filas: %{y}<extra></extra>",
+            hovertemplate="%{x|%d/%m/%Y}<br>Total de Atrasadas: %{y}<extra></extra>",
         ))
 
         data_meta = adicionar_dias_operacionais(hoje, dias_meta)
@@ -549,7 +549,7 @@ def dashboard(df):
             f"""
             🔹 **Leitura do gráfico:** a linha azul mostra a **regularização acumulada no ritmo atual**,
             a linha verde mostra a **regularização acumulada na meta**, e a linha cinza mostra o
-            **total de preventivas em fila a zerar**.  
+            **total de preventivas atrasadas a zerar**.  
             🔹 **Meta definida:** {meta_por_dia} preventivas/dia.  
             🔹 **Ritmo atual considerado:** {ritmo_atual} preventiva/dia.  
             🔹 **Datas estimadas:** consideram **segunda a sábado** como dias operacionais e **ignoram domingo**.  
@@ -562,7 +562,7 @@ def dashboard(df):
     cols_show = [
         c for c in [
             "PLACA", "MARCA", "MODELO", "TIPO DE FROTA", "Última Revisão", "Data da Próxima Revisão",
-            "Qtd Preditivas Realizadas", "Qtd Preditivas Previstas Hoje", "Qtd Preditivas Em Filas",
+            "Qtd Preditivas Realizadas", "Qtd Preditivas Previstas Hoje", "Qtd Preditivas Atrasadas",
             "Pode Confirmar Preventiva", "Preventiva Concluída", CYCLE_COL,
             "Dias p/ Próxima", "Faixa", "Status Preventiva", "Status Geral"
         ] if c in df_f.columns
@@ -667,7 +667,7 @@ def pagina_cadastro(df):
     st.dataframe(
         recalcular_indicadores(df.loc[[idx]].copy())[[
             c for c in [
-                "PLACA", "Qtd Preditivas Realizadas", "Qtd Preditivas Previstas Hoje", "Qtd Preditivas Em Filas",
+                "PLACA", "Qtd Preditivas Realizadas", "Qtd Preditivas Previstas Hoje", "Qtd Preditivas Atrasadas",
                 "Pode Confirmar Preventiva", "Preventiva Concluída", CYCLE_COL,
                 "Dias p/ Próxima", "Faixa", "Status Preventiva", "Status Geral", *PRED_COLS
             ] if c in df.columns
@@ -693,12 +693,12 @@ def pagina_ajuda():
         **Indicadores do dashboard**
         - **Total de Ativos**: quantidade de placas únicas.
         - **Preventivas em Dia**: ativos cuja preventiva ainda não venceu.
-        - **Preditivas em Dia**: ativos sem preditivas em fila até a data atual.
+        - **Preditivas em Dia**: ativos sem preditivas atrasadas até a data atual.
         - **Preventivas em Fila**: ativos com preventiva atrasada aguardando regularização.
         - **% Preventivas em Dia**: percentual de ativos cuja preventiva está em dia no filtro atual.
         - **Donuts**: um donut para Preditivas e outro para Preventivas, assim cada par (em dia/atrasadas) soma 100% dentro do próprio tipo.
-        - **Gráfico consolidado**: exibe preventivas em fila, preditivas em fila, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
-        - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas em fila, a linha da meta e o total de atrasadas a zerar com datas estimadas em dias operacionais (seg. a sáb.).
+        - **Gráfico consolidado**: exibe preventivas atrasadas, preditivas atrasadas, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
+        - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas atrasadas, a linha da meta e o total de atrasadas a zerar com datas estimadas em dias operacionais (seg. a sáb.).
         """
     )
 
