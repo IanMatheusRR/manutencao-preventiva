@@ -443,7 +443,15 @@ def dashboard(df):
             "Preventivas": "#55A868",
         },
     )
-    
+    fig_consolidado.update_traces(textposition="outside")
+    fig_consolidado.update_layout(
+        xaxis_title="Faixa / Indicador",
+        yaxis_title="Quantidade",
+        legend_title="Grupo",
+        uniformtext_minsize=8,
+        uniformtext_mode="hide",
+        height=500,
+    )
     fig_consolidado.update_xaxes(tickangle=-20)
     st.plotly_chart(fig_consolidado, use_container_width=True)
 
