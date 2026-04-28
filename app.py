@@ -1,8 +1,11 @@
 
 import io
-from datetime import datetime, date
+from datetime import datetime, timedelta, date
+from pathlib import Path
+
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(
@@ -21,7 +24,6 @@ PRED_COLS = [
     "Pred 6 (90d)",
     "Pred 7 (105d)",
 ]
-CYCLE_COL = "CICLOS DE REVISÃO PRED"
 
 REQUIRED_BASE_COLUMNS = [
     "PLACA",
@@ -34,7 +36,7 @@ REQUIRED_BASE_COLUMNS = [
 EXTRA_COLUMNS_DEFAULTS = {
     "Preventiva Concluída": "PENDENTE",
     "Data da Preventiva Realizada": pd.NaT,
-    CYCLE_COL: 0,
+    "Ciclos de Preventiva Realizados": 0,
     "Observações": "",
     "Status Preventiva": "EM DIA",
     "Status Geral": "EM DIA",
@@ -79,20 +81,20 @@ def carregar_arquivo(uploaded_file):
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
 
-    # Compatibilidade com versões antigas do app
-    if "Ciclos de Preventiva Realizados" in df.columns and CYCLE_COL not in df.columns:
-        df[CYCLE_COL] = df["Ciclos de Preventiva Realizados"]
-
     # Garante colunas extras
     for col, default in EXTRA_COLUMNS_DEFAULTS.items():
         if col not in df.columns:
             df[col] = default
 
+    # Ajustes de tipos
     if "Intervalo de Revisão" not in df.columns:
         df["Intervalo de Revisão"] = 120
     df["Intervalo de Revisão"] = pd.to_numeric(df["Intervalo de Revisão"], errors="coerce").fillna(120).astype(int)
 
-    df[CYCLE_COL] = pd.to_numeric(df[CYCLE_COL], errors="coerce").fillna(0).astype(int)
+    if "Ciclos de Preventiva Realizados" in df.columns:
+        df["Ciclos de Preventiva Realizados"] = pd.to_numeric(
+            df["Ciclos de Preventiva Realizados"], errors="coerce"
+        ).fillna(0).astype(int)
 
     for col in PRED_COLS:
         df[col] = df[col].apply(normalizar_resposta)
@@ -102,6 +104,7 @@ def carregar_arquivo(uploaded_file):
     else:
         df["Preventiva Concluída"] = "PENDENTE"
 
+    # Remove duplicidades mantendo a primeira placa
     if "PLACA" in df.columns:
         df = df.drop_duplicates(subset=["PLACA"], keep="first").copy()
 
@@ -111,7 +114,6 @@ def carregar_arquivo(uploaded_file):
 def calcular_info_linha(row, hoje=None):
     if hoje is None:
         hoje = pd.Timestamp(date.today())
-
     ultima = row.get("Última Revisão")
     proxima = row.get("Data da Próxima Revisão")
     intervalo = row.get("Intervalo de Revisão", 120)
@@ -129,15 +131,18 @@ def calcular_info_linha(row, hoje=None):
         proxima = hoje + pd.Timedelta(days=intervalo)
 
     dias_proxima = int((proxima.normalize() - hoje.normalize()).days)
-    dias_decorridos = max(0, int((hoje.normalize() - ultima.normalize()).days))
+    dias_decorridos = int((hoje.normalize() - ultima.normalize()).days)
+    dias_decorridos = max(0, dias_decorridos)
 
+    # Quantidade de preditivas previstas até hoje (a cada 15 dias, até 105)
     previstas = min(max(dias_decorridos // 15, 0), 7)
     realizadas = sum(normalizar_resposta(row.get(c, "NÃO")) == "SIM" for c in PRED_COLS)
     em_dia = min(realizadas, previstas)
     atrasadas = max(previstas - realizadas, 0)
     pendentes_total = max(7 - realizadas, 0)
-    progresso = realizadas / 7
+    progresso = realizadas / 7 if 7 else 0
 
+    # Próxima preditiva pendente
     proxima_pred_desc = "Concluídas"
     marcos = [15, 30, 45, 60, 75, 90, 105]
     for idx, col in enumerate(PRED_COLS):
@@ -146,6 +151,7 @@ def calcular_info_linha(row, hoje=None):
             proxima_pred_desc = f"{col} - {data_prevista.strftime('%d/%m/%Y')}"
             break
 
+    # Faixa baseada nos dias restantes da preventiva
     if dias_proxima < 0:
         faixa = "Atrasada"
     elif dias_proxima <= 15:
@@ -212,27 +218,21 @@ def dataframe_para_excel(df):
     return output
 
 
+
 def mostrar_metricas(df_filtrado):
     total_ativos = int(df_filtrado["PLACA"].nunique()) if not df_filtrado.empty else 0
     total_preventivas_em_dia = int((df_filtrado["Status Preventiva"] == "EM DIA").sum())
     total_preditivas_em_dia = int((df_filtrado["Qtd Preditivas Atrasadas"] == 0).sum())
     total_preventivas_atrasadas = int((df_filtrado["Status Preventiva"] == "ATRASADA").sum())
-
-    if total_ativos:
-        concluidas_mask = (
-            (pd.to_numeric(df_filtrado.get(CYCLE_COL, 0), errors="coerce").fillna(0) > 0)
-            | (df_filtrado.get("Preventiva Concluída", "PENDENTE").astype(str).str.upper() == "SIM")
-        )
-        pct_prev_concluidas = (concluidas_mask.sum() / total_ativos) * 100
-    else:
-        pct_prev_concluidas = 0
+    total_prev_em_dia = int((df_filtrado["Status Preventiva"] == "EM DIA").sum())
+    pct_prev_em_dia = (total_prev_em_dia / total_ativos * 100) if total_ativos else 0
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total de Ativos", f"{total_ativos}")
     c2.metric("Preventivas em Dia", f"{total_preventivas_em_dia}")
     c3.metric("Preditivas em Dia", f"{total_preditivas_em_dia}")
     c4.metric("Preventivas Atrasadas", f"{total_preventivas_atrasadas}")
-    c5.metric("% Preventivas Concluídas", f"{pct_prev_concluidas:.1f}%")
+    c5.metric("% Preventivas em Dia", f"{pct_prev_em_dia:.1f}%")
 
 
 def dashboard(df):
@@ -260,6 +260,7 @@ def dashboard(df):
     mostrar_metricas(df_f)
     st.divider()
 
+    # Resumo por faixa
     faixa_order = ["Atrasada", "0-15 dias", "16-30 dias", "31-60 dias", "61-120 dias", ">120 dias"]
     faixa_counts = (
         df_f["Faixa"].value_counts().rename_axis("Faixa").reset_index(name="Quantidade")
@@ -299,54 +300,22 @@ def dashboard(df):
             fig_status = px.pie(status_counts, names="Status", values="Quantidade", hole=0.5)
             st.plotly_chart(fig_status, use_container_width=True)
 
-    graficos_cols = st.columns(2)
-    with graficos_cols[0]:
-        st.subheader("📊 Consolidado de atrasos, preditivas e preventivas")
+    st.subheader("📊 Consolidado de atrasos, preditivas e preventivas")
+    
+    preventivas_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
+    preditivas_atrasadas = int((df_f["Qtd Preditivas Atrasadas"] > 0).sum()) if "Qtd Preditivas Atrasadas" in df_f.columns else 0
 
-        preventivas_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
-        preditivas_atrasadas = int((df_f["Qtd Preditivas Atrasadas"] > 0).sum()) if "Qtd Preditivas Atrasadas" in df_f.columns else 0
-        preventivas_realizadas = int(pd.to_numeric(df_f.get(CYCLE_COL, 0), errors="coerce").fillna(0).sum())
+    if "CICLOS DE REVISÃO PRED" in df_f.columns:
+        preventivas_realizadas = int(pd.to_numeric(df_f["CICLOS DE REVISÃO PRED"], errors="coerce").fillna(0).sum())
+    elif "Ciclos de Preventiva Realizados" in df_f.columns:
+        preventivas_realizadas = int(pd.to_numeric(df_f["Ciclos de Preventiva Realizados"], errors="coerce").fillna(0).sum())
+    elif "Preventiva Concluída" in df_f.columns:
+        preventivas_realizadas = int((df_f["Preventiva Concluída"].astype(str).str.upper() == "SIM").sum())
+    else:
+        preventivas_realizadas = 0
 
-        grafico_data = pd.DataFrame({
-            "Faixa / Indicador": [
-                "Preventivas atrasadas",
-                "Preditivas atrasadas",
-                "0-15",
-                "16-30",
-                "31-45",
-                "46-60",
-                "61-75",
-                "76-90",
-                "91-105",
-                "Preventivas realizadas",
-            ],
-            "Quantidade": [
-                preventivas_atrasadas,
-                preditivas_atrasadas,
-                int((df_f[PRED_COLS[0]] == "SIM").sum()),
-                int((df_f[PRED_COLS[1]] == "SIM").sum()),
-                int((df_f[PRED_COLS[2]] == "SIM").sum()),
-                int((df_f[PRED_COLS[3]] == "SIM").sum()),
-                int((df_f[PRED_COLS[4]] == "SIM").sum()),
-                int((df_f[PRED_COLS[5]] == "SIM").sum()),
-                int((df_f[PRED_COLS[6]] == "SIM").sum()),
-                preventivas_realizadas,
-            ],
-            "Tipo": [
-                "Atrasos Preventiva",
-                "Atrasos Preditiva",
-                "Preditivas",
-                "Preditivas",
-                "Preditivas",
-                "Preditivas",
-                "Preditivas",
-                "Preditivas",
-                "Preditivas",
-                "Preventivas",
-            ]
-        })
-
-        ordem_x = [
+    grafico_data = pd.DataFrame({
+        "Faixa / Indicador": [
             "Preventivas atrasadas",
             "Preditivas atrasadas",
             "0-15",
@@ -357,72 +326,125 @@ def dashboard(df):
             "76-90",
             "91-105",
             "Preventivas realizadas",
+        ],
+        "Quantidade": [
+            preventivas_atrasadas,
+            preditivas_atrasadas,
+            int((df_f[PRED_COLS[0]] == "SIM").sum()),
+            int((df_f[PRED_COLS[1]] == "SIM").sum()),
+            int((df_f[PRED_COLS[2]] == "SIM").sum()),
+            int((df_f[PRED_COLS[3]] == "SIM").sum()),
+            int((df_f[PRED_COLS[4]] == "SIM").sum()),
+            int((df_f[PRED_COLS[5]] == "SIM").sum()),
+            int((df_f[PRED_COLS[6]] == "SIM").sum()),
+            preventivas_realizadas,
+        ],
+        "Tipo": [
+            "Atrasos Preventiva",
+            "Atrasos Preditiva",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preventivas",
         ]
+    })
 
-        fig_consolidado = px.bar(
-            grafico_data,
-            x="Faixa / Indicador",
-            y="Quantidade",
-            color="Tipo",
-            text="Quantidade",
-            category_orders={"Faixa / Indicador": ordem_x},
-            color_discrete_map={
-                "Atrasos Preventiva": "#d62728",
-                "Atrasos Preditiva": "#ff7f0e",
-                "Preditivas": "#1f77b4",
-                "Preventivas": "#2ca02c",
-            },
-        )
-        fig_consolidado.update_traces(textposition="outside")
-        fig_consolidado.update_layout(
-            xaxis_title="Faixa / Indicador",
-            yaxis_title="Quantidade",
-            legend_title="Grupo",
-            uniformtext_minsize=8,
-            uniformtext_mode="hide",
-        )
-        st.plotly_chart(fig_consolidado, use_container_width=True)
-        st.dataframe(grafico_data, use_container_width=True, hide_index=True)
+    ordem_x = [
+        "Preventivas atrasadas",
+        "Preditivas atrasadas",
+        "0-15",
+        "16-30",
+        "31-45",
+        "46-60",
+        "61-75",
+        "76-90",
+        "91-105",
+        "Preventivas realizadas",
+    ]
 
-    with graficos_cols[1]:
-        st.subheader("📈 Projeção de conclusão das preventivas")
-        pendentes = int((df_f["Preventiva Concluída"] != "SIM").sum()) if "Preventiva Concluída" in df_f.columns else 0
-        if pendentes == 0:
-            st.success("✅ Todas as preventivas já foram concluídas!")
-        else:
-            meta_por_dia = 3
-            ritmo_atual = 1
-            dias_meta = int((pendentes / meta_por_dia) + 0.999)
-            dias_atual = int((pendentes / ritmo_atual) + 0.999)
-            dias = list(range(0, max(dias_meta, dias_atual) + 1))
-            curva_meta = [max(pendentes - meta_por_dia * d, 0) for d in dias]
-            curva_atual = [max(pendentes - ritmo_atual * d, 0) for d in dias]
-            df_proj = pd.DataFrame({
-                "Dias": dias,
-                "Meta (3/dia)": curva_meta,
-                "Ritmo Atual": curva_atual,
-            })
-            fig_proj = px.line(df_proj, x="Dias", y=["Meta (3/dia)", "Ritmo Atual"], markers=True)
-            fig_proj.update_layout(
-                xaxis_title="Dias a partir de hoje",
-                yaxis_title="Preventivas pendentes",
-                legend_title="Cenário",
-            )
-            st.plotly_chart(fig_proj, use_container_width=True)
-            st.info(
-                f"""
-                🔹 **Preventivas pendentes:** {pendentes}
-                🔹 **Com a meta (3/dia):** ~{dias_meta} dias
-                🔹 **No ritmo atual:** ~{dias_atual} dias
-                """
-            )
+    fig_consolidado = px.bar(
+        grafico_data,
+        x="Faixa / Indicador",
+        y="Quantidade",
+        color="Tipo",
+        text="Quantidade",
+        category_orders={"Faixa / Indicador": ordem_x},
+        color_discrete_map={
+            "Atrasos Preventiva": "#d62728",
+            "Atrasos Preditiva": "#ff7f0e",
+            "Preditivas": "#1f77b4",
+            "Preventivas": "#2ca02c",
+        },
+    )
+    fig_consolidado.update_traces(textposition="outside")
+    fig_consolidado.update_layout(
+        xaxis_title="Faixa / Indicador",
+        yaxis_title="Quantidade",
+        legend_title="Grupo",
+        uniformtext_minsize=8,
+        uniformtext_mode="hide",
+    )
+    st.plotly_chart(fig_consolidado, use_container_width=True)
+    st.dataframe(grafico_data, use_container_width=True, hide_index=True)
+
+    st.subheader("📈 Projeção de conclusão das preventivas")
+
+    # Quantidade de preventivas pendentes
+    pendentes = int((df_f["Preventiva Concluída"] != "SIM").sum()) if "Preventiva Concluída" in df_f.columns else 0
+
+    if pendentes == 0:
+        st.success("✅ Todas as preventivas já foram concluídas!")
+    else:
+        meta_por_dia = 3
+        ritmo_atual = 1  # estimativa conservadora
+
+        dias_meta = int((pendentes / meta_por_dia) + 0.999)
+        dias_atual = int((pendentes / ritmo_atual) + 0.999)
+
+        dias = list(range(0, max(dias_meta, dias_atual) + 1))
+
+        curva_meta = [max(pendentes - meta_por_dia * d, 0) for d in dias]
+        curva_atual = [max(pendentes - ritmo_atual * d, 0) for d in dias]
+
+        df_proj = pd.DataFrame({
+            "Dias": dias,
+            "Meta (3/dia)": curva_meta,
+            "Ritmo Atual": curva_atual
+        })
+
+        fig_proj = px.line(
+            df_proj,
+            x="Dias",
+            y=["Meta (3/dia)", "Ritmo Atual"],
+            markers=True,
+        )
+
+        fig_proj.update_layout(
+            xaxis_title="Dias a partir de hoje",
+            yaxis_title="Preventivas pendentes",
+            legend_title="Cenário",
+        )
+
+        st.plotly_chart(fig_proj, use_container_width=True)
+
+        st.info(
+            f"""
+            🔹 **Preventivas pendentes:** {pendentes}  
+            🔹 **Com a meta (3/dia):** ~{dias_meta} dias  
+            🔹 **No ritmo atual:** ~{dias_atual} dias  
+            """
+        )
 
     st.subheader("Base detalhada")
     cols_show = [
         c for c in [
             "PLACA", "MARCA", "MODELO", "TIPO DE FROTA", "Última Revisão", "Data da Próxima Revisão",
             "Qtd Preditivas Realizadas", "Qtd Preditivas Previstas Hoje", "Qtd Preditivas Atrasadas",
-            "Pode Confirmar Preventiva", "Preventiva Concluída", CYCLE_COL,
+            "Pode Confirmar Preventiva", "Preventiva Concluída", "Ciclos de Preventiva Realizados",
             "Dias p/ Próxima", "Faixa", "Status Geral"
         ] if c in df_f.columns
     ]
@@ -442,19 +464,12 @@ def pagina_cadastro(df):
     info1.metric("Última revisão", row["Última Revisão"].strftime("%d/%m/%Y") if pd.notna(row["Última Revisão"]) else "-")
     info2.metric("Próxima revisão", row["Data da Próxima Revisão"].strftime("%d/%m/%Y") if pd.notna(row["Data da Próxima Revisão"]) else "-")
     info3.metric("Dias p/ próxima", int(row["Dias p/ Próxima"]))
-    info4.metric("Ciclos concluídos", int(row.get(CYCLE_COL, 0)))
+    info4.metric("Ciclos concluídos", int(row.get("Ciclos de Preventiva Realizados", 0)))
 
     detalhes = [c for c in ["MARCA", "MODELO", "TIPO DE FROTA", "CHASSI", "Status Geral", "Próxima Preditiva Prevista"] if c in df.columns]
     if detalhes:
         st.write("### Dados do ativo")
-        st.json({
-            c: (
-                row[c].strftime("%d/%m/%Y")
-                if isinstance(row[c], pd.Timestamp) and pd.notna(row[c])
-                else (None if pd.isna(row[c]) else str(row[c]))
-            )
-            for c in detalhes
-        })
+        st.json({c: (row[c].strftime("%d/%m/%Y") if isinstance(row[c], pd.Timestamp) and pd.notna(row[c]) else (None if pd.isna(row[c]) else str(row[c]))) for c in detalhes})
 
     st.write("### Registrar preditivas")
     with st.form("form_preditivas"):
@@ -467,29 +482,24 @@ def pagina_cadastro(df):
         obs = st.text_area("Observações", value=str(row.get("Observações", "")))
         salvar_preds = st.form_submit_button("Salvar preditivas", type="primary")
 
-        if salvar_preds:
-            for col, val in novos.items():
-                df.at[idx, col] = "SIM" if val else "NÃO"
-            df.at[idx, "Observações"] = obs
-            df = recalcular_indicadores(df)
-            st.session_state["df_manutencao"] = df
-            st.success("Preditivas atualizadas com sucesso.")
-            st.rerun()
+    if salvar_preds:
+        for col, val in novos.items():
+            df.at[idx, col] = "SIM" if val else "NÃO"
+        df.at[idx, "Observações"] = obs
+        df = recalcular_indicadores(df)
+        st.session_state["df_manutencao"] = df
+        st.success("Preditivas atualizadas com sucesso.")
+        st.rerun()
 
     st.write("### Confirmar preventiva")
     pode_confirmar = str(row.get("Pode Confirmar Preventiva", "NÃO")) == "SIM"
     if not pode_confirmar:
         st.warning("A preventiva só pode ser confirmada após todas as 7 preditivas estarem marcadas como SIM.")
-
     with st.form("form_preventiva"):
-        valor_atual = str(row.get("Preventiva Concluída", "PENDENTE")).upper()
-        if valor_atual not in ["PENDENTE", "SIM", "NÃO"]:
-            valor_atual = "PENDENTE"
-
         realizou_prev = st.selectbox(
             "A preventiva foi realizada?",
             options=["PENDENTE", "SIM", "NÃO"],
-            index=["PENDENTE", "SIM", "NÃO"].index(valor_atual),
+            index=["PENDENTE", "SIM", "NÃO"].index(str(row.get("Preventiva Concluída", "PENDENTE")).upper() if str(row.get("Preventiva Concluída", "PENDENTE")).upper() in ["PENDENTE", "SIM", "NÃO"] else "PENDENTE"),
             disabled=not pode_confirmar,
         )
         data_prev = st.date_input(
@@ -504,33 +514,33 @@ def pagina_cadastro(df):
         )
         salvar_prev = st.form_submit_button("Confirmar preventiva", disabled=not pode_confirmar)
 
-        if salvar_prev:
-            df.at[idx, "Preventiva Concluída"] = realizou_prev
-            if realizou_prev == "SIM":
-                data_prev_ts = pd.Timestamp(data_prev)
-                df.at[idx, "Data da Preventiva Realizada"] = data_prev_ts
-                df.at[idx, CYCLE_COL] = int(pd.to_numeric(df.at[idx, CYCLE_COL], errors="coerce") if pd.notna(df.at[idx, CYCLE_COL]) else 0) + 1
-                if resetar_ciclo:
-                    df.at[idx, "Última Revisão"] = data_prev_ts
-                    intervalo = int(df.at[idx, "Intervalo de Revisão"]) if pd.notna(df.at[idx, "Intervalo de Revisão"]) else 120
-                    df.at[idx, "Data da Próxima Revisão"] = data_prev_ts + pd.Timedelta(days=intervalo)
-                    for col in PRED_COLS:
-                        df.at[idx, col] = "NÃO"
-                    df.at[idx, "Preventiva Concluída"] = "PENDENTE"
-            elif realizou_prev == "NÃO":
-                df.at[idx, "Data da Preventiva Realizada"] = pd.NaT
+    if salvar_prev:
+        df.at[idx, "Preventiva Concluída"] = realizou_prev
+        if realizou_prev == "SIM":
+            data_prev_ts = pd.Timestamp(data_prev)
+            df.at[idx, "Data da Preventiva Realizada"] = data_prev_ts
+            df.at[idx, "Ciclos de Preventiva Realizados"] = int(df.at[idx, "Ciclos de Preventiva Realizados"]) + 1
 
-            df = recalcular_indicadores(df)
-            st.session_state["df_manutencao"] = df
-            st.success("Preventiva atualizada com sucesso.")
-            st.rerun()
+            if resetar_ciclo:
+                df.at[idx, "Última Revisão"] = data_prev_ts
+                intervalo = int(df.at[idx, "Intervalo de Revisão"]) if pd.notna(df.at[idx, "Intervalo de Revisão"]) else 120
+                df.at[idx, "Data da Próxima Revisão"] = data_prev_ts + pd.Timedelta(days=intervalo)
+                for col in PRED_COLS:
+                    df.at[idx, col] = "NÃO"
+                df.at[idx, "Preventiva Concluída"] = "PENDENTE"
+        elif realizou_prev == "NÃO":
+            df.at[idx, "Data da Preventiva Realizada"] = pd.NaT
+        df = recalcular_indicadores(df)
+        st.session_state["df_manutencao"] = df
+        st.success("Preventiva atualizada com sucesso.")
+        st.rerun()
 
     st.write("### Situação atual do ativo")
     st.dataframe(
         recalcular_indicadores(df.loc[[idx]].copy())[[
             c for c in [
                 "PLACA", "Qtd Preditivas Realizadas", "Qtd Preditivas Previstas Hoje", "Qtd Preditivas Atrasadas",
-                "Pode Confirmar Preventiva", "Preventiva Concluída", CYCLE_COL,
+                "Pode Confirmar Preventiva", "Preventiva Concluída", "Ciclos de Preventiva Realizados",
                 "Dias p/ Próxima", "Faixa", "Status Preventiva", "Status Geral", *PRED_COLS
             ] if c in df.columns
         ]],
@@ -542,12 +552,12 @@ def pagina_cadastro(df):
 def pagina_ajuda():
     st.title("ℹ️ Como usar")
     st.markdown(
-        f"""
+        """
         1. Envie a planilha `.xlsx` no menu lateral.
         2. Acesse **Cadastro / Atualização** para marcar as preditivas de cada carreta.
         3. Quando as 7 preditivas estiverem com **SIM**, o app libera a confirmação da preventiva.
         4. Ao confirmar a preventiva como **SIM**, o sistema:
-           - soma **+1** em `{CYCLE_COL}`;
+           - soma **+1** em `Ciclos de Preventiva Realizados`;
            - grava a data da preventiva realizada;
            - opcionalmente reinicia o ciclo de 120 dias, limpa as 7 preditivas e recalcula a próxima revisão.
         5. Use o botão **Baixar planilha atualizada** para salvar a base já tratada.
@@ -557,8 +567,7 @@ def pagina_ajuda():
         - **Preventivas em Dia**: ativos cuja preventiva ainda não venceu.
         - **Preditivas em Dia**: ativos sem preditivas atrasadas até a data atual.
         - **Preventivas Atrasadas**: ativos com próxima preventiva vencida e não concluída.
-        - **% Preventivas Concluídas**: percentual de ativos com pelo menos 1 preventiva concluída ou com a preventiva atual marcada como SIM.
-        - **Gráfico consolidado**: exibe preventivas atrasadas, preditivas atrasadas, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
+        - **% Preventivas Concluídas**: percentual de ativos marcados com preventiva concluída = SIM.
         """
     )
 
