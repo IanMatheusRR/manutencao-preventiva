@@ -452,7 +452,6 @@ def dashboard(df):
         uniformtext_mode="hide",
         height=500,
     )
-    fig_consolidado.update_xaxes(tickangle=-20)
     st.plotly_chart(fig_consolidado, use_container_width=True)
 
     st.subheader("📈 Plano de recuperação das preventivas em fila")
