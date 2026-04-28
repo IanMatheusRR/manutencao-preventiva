@@ -53,6 +53,9 @@ EXTRA_COLUMNS_DEFAULTS = {
 }
 
 
+# ----------------------------
+# UTILITÁRIOS
+# ----------------------------
 def normalizar_resposta(valor):
     if pd.isna(valor):
         return "NÃO"
@@ -60,6 +63,38 @@ def normalizar_resposta(valor):
     if valor in {"SIM", "S", "TRUE", "1", "REALIZADA", "REALIZADO"}:
         return "SIM"
     return "NÃO"
+
+
+def adicionar_dias_operacionais(data_inicial, dias):
+    """
+    Avança N dias operacionais considerando segunda a sábado.
+    Domingo (weekday == 6) é ignorado.
+    """
+    data = pd.Timestamp(data_inicial)
+    adicionados = 0
+
+    while adicionados < dias:
+        data += pd.Timedelta(days=1)
+        if data.weekday() != 6:  # domingo
+            adicionados += 1
+
+    return data
+
+
+def gerar_datas_operacionais(data_inicial, quantidade):
+    """
+    Gera uma lista de datas operacionais (segunda a sábado), ignorando domingos.
+    Inclui a data inicial apenas se ela não for domingo.
+    """
+    datas = []
+    data_temp = pd.Timestamp(data_inicial)
+
+    while len(datas) < quantidade:
+        if data_temp.weekday() != 6:
+            datas.append(data_temp)
+        data_temp += pd.Timedelta(days=1)
+
+    return datas
 
 
 def carregar_arquivo(uploaded_file):
@@ -211,6 +246,9 @@ def dataframe_para_excel(df):
     return output
 
 
+# ----------------------------
+# DASHBOARD
+# ----------------------------
 def mostrar_metricas(df_filtrado):
     total_ativos = int(df_filtrado["PLACA"].nunique()) if not df_filtrado.empty else 0
     total_preventivas_em_dia = int((df_filtrado["Status Preventiva"] == "EM DIA").sum())
@@ -413,11 +451,13 @@ def dashboard(df):
     )
     fig_consolidado.update_xaxes(tickangle=-20)
     st.plotly_chart(fig_consolidado, use_container_width=True)
+    st.dataframe(grafico_data, use_container_width=True, hide_index=True)
 
     st.subheader("📈 Plano de recuperação das preventivas atrasadas")
     st.caption(
         "A linha azul mostra o ritmo atual de regularização, a verde mostra a meta, "
-        "e a cinza mostra o total de preventivas atrasadas que precisa ser zerado."
+        "e a cinza mostra o total de preventivas atrasadas que precisa ser zerado. "
+        "As datas estimadas consideram segunda a sábado como dias operacionais e ignoram domingo."
     )
 
     pendentes = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
@@ -425,54 +465,71 @@ def dashboard(df):
         st.success("✅ Não há preventivas atrasadas no filtro atual.")
     else:
         meta_por_dia = 3
-        ritmo_atual = 2
+        ritmo_atual = 1
         dias_meta = int((pendentes / meta_por_dia) + 0.999)
         dias_atual = int((pendentes / ritmo_atual) + 0.999)
         horizonte = max(dias_meta, dias_atual)
 
         hoje = pd.Timestamp(date.today())
-        datas = pd.date_range(start=hoje, periods=horizonte + 1, freq="D")
+        datas = gerar_datas_operacionais(hoje, horizonte + 1)
         progresso_meta = [min(meta_por_dia * d, pendentes) for d in range(horizonte + 1)]
         progresso_atual = [min(ritmo_atual * d, pendentes) for d in range(horizonte + 1)]
         total_atrasadas = [pendentes for _ in range(horizonte + 1)]
 
         fig_proj = go.Figure()
         fig_proj.add_trace(go.Scatter(
-            x=datas, y=progresso_atual, mode="lines+markers", name="Ritmo Atual",
-            line=dict(color="#4C72B0", width=3), marker=dict(size=6, color="#1f77b4"),
+            x=datas,
+            y=progresso_atual,
+            mode="lines+markers",
+            name="Ritmo Atual",
+            line=dict(color="#4C72B0", width=3),
+            marker=dict(size=6, color="#4C72B0"),
             hovertemplate="%{x|%d/%m/%Y}<br>Ritmo Atual: %{y}<extra></extra>",
         ))
         fig_proj.add_trace(go.Scatter(
-            x=datas, y=progresso_meta, mode="lines+markers", name="Meta (3/dia)",
-            line=dict(color="#55A868", width=3), marker=dict(size=6, color="#2ca02c"),
+            x=datas,
+            y=progresso_meta,
+            mode="lines+markers",
+            name="Meta (3/dia)",
+            line=dict(color="#55A868", width=3),
+            marker=dict(size=6, color="#55A868"),
             hovertemplate="%{x|%d/%m/%Y}<br>Meta: %{y}<extra></extra>",
         ))
         fig_proj.add_trace(go.Scatter(
-            x=datas, y=total_atrasadas, mode="lines", name="Total de Atrasadas",
+            x=datas,
+            y=total_atrasadas,
+            mode="lines",
+            name="Total de Atrasadas",
             line=dict(color="#7F7F7F", width=2, dash="dash"),
             hovertemplate="%{x|%d/%m/%Y}<br>Total de Atrasadas: %{y}<extra></extra>",
         ))
 
-        data_meta = hoje + pd.Timedelta(days=dias_meta)
-        data_atual = hoje + pd.Timedelta(days=dias_atual)
+        data_meta = adicionar_dias_operacionais(hoje, dias_meta)
+        data_atual = adicionar_dias_operacionais(hoje, dias_atual)
         fig_proj.add_trace(go.Scatter(
-            x=[data_meta], y=[pendentes], mode="markers+text",
-            marker=dict(size=12, color="#2ca02c", symbol="diamond"),
+            x=[data_meta],
+            y=[pendentes],
+            mode="markers+text",
+            marker=dict(size=12, color="#55A868", symbol="diamond"),
             text=[f"Meta atinge total<br>{data_meta.strftime('%d/%m')}"] ,
-            textposition="top center", showlegend=False,
+            textposition="top center",
+            showlegend=False,
             hovertemplate="%{x|%d/%m/%Y}<br>Meta atinge o total: %{y}<extra></extra>",
         ))
         fig_proj.add_trace(go.Scatter(
-            x=[data_atual], y=[pendentes], mode="markers+text",
-            marker=dict(size=12, color="#1f77b4", symbol="diamond"),
+            x=[data_atual],
+            y=[pendentes],
+            mode="markers+text",
+            marker=dict(size=12, color="#4C72B0", symbol="diamond"),
             text=[f"Ritmo atual atinge total<br>{data_atual.strftime('%d/%m')}"] ,
-            textposition="bottom center", showlegend=False,
+            textposition="bottom center",
+            showlegend=False,
             hovertemplate="%{x|%d/%m/%Y}<br>Ritmo atual atinge o total: %{y}<extra></extra>",
         ))
 
         fig_proj.update_layout(
             height=460,
-            xaxis_title="Datas previstas",
+            xaxis_title="Datas operacionais previstas (seg. a sáb.)",
             yaxis_title="Preventivas regularizadas (acumulado)",
             legend_title="Referência",
             hovermode="x unified",
@@ -483,8 +540,8 @@ def dashboard(df):
         st.plotly_chart(fig_proj, use_container_width=True)
 
         c_meta, c_atual, c_atrasadas = st.columns(3)
-        c_meta.metric("Data estimada na meta", data_meta.strftime("%d/%m/%Y"), delta=f"{dias_meta} dias")
-        c_atual.metric("Data estimada no ritmo atual", data_atual.strftime("%d/%m/%Y"), delta=f"{dias_atual} dias")
+        c_meta.metric("Data estimada na meta", data_meta.strftime("%d/%m/%Y"), delta=f"{dias_meta} dias operacionais")
+        c_atual.metric("Data estimada no ritmo atual", data_atual.strftime("%d/%m/%Y"), delta=f"{dias_atual} dias operacionais")
         c_atrasadas.metric("Preventivas atrasadas hoje", f"{pendentes}")
 
         st.info(
@@ -494,6 +551,7 @@ def dashboard(df):
             **total de preventivas atrasadas a zerar**.  
             🔹 **Meta definida:** {meta_por_dia} preventivas/dia.  
             🔹 **Ritmo atual considerado:** {ritmo_atual} preventiva/dia.  
+            🔹 **Datas estimadas:** consideram **segunda a sábado** como dias operacionais e **ignoram domingo**.  
             🔹 **Data para atingir a meta:** {data_meta.strftime('%d/%m/%Y')}.  
             🔹 **Data estimada no ritmo atual:** {data_atual.strftime('%d/%m/%Y')}.  
             """
@@ -637,9 +695,9 @@ def pagina_ajuda():
         - **Preditivas em Dia**: ativos sem preditivas atrasadas até a data atual.
         - **Preventivas em Fila**: ativos com preventiva atrasada aguardando regularização.
         - **% Preventivas em Dia**: percentual de ativos cuja preventiva está em dia no filtro atual.
-        - **Pizza / donuts**: um donut para Preditivas e outro para Preventivas, assim cada par (em dia/atrasadas) soma 100% dentro do próprio tipo.
+        - **Donuts**: um donut para Preditivas e outro para Preventivas, assim cada par (em dia/atrasadas) soma 100% dentro do próprio tipo.
         - **Gráfico consolidado**: exibe preventivas atrasadas, preditivas atrasadas, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
-        - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas atrasadas, a linha da meta e o total de atrasadas a zerar com datas estimadas.
+        - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas atrasadas, a linha da meta e o total de atrasadas a zerar com datas estimadas em dias operacionais (seg. a sáb.).
         """
     )
 
