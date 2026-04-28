@@ -387,43 +387,43 @@ def dashboard(df):
     preventivas_realizadas = int(pd.to_numeric(df_f.get(CYCLE_COL, 0), errors="coerce").fillna(0).sum())
 
     grafico_data = pd.DataFrame({
-    "Faixa / Indicador": [
-        "Preventivas em Fila",
-        "Preditivas em Fila",
-        "0-15",
-        "16-30",
-        "31-45",
-        "46-60",
-        "61-75",
-        "76-90",
-        "91-105",
-        "Preventivas em Dia",
-    ],
-    "Quantidade": [
-        preventivas_em_fila,
-        preditivas_em_fila,
-        qtd_0_15,
-        qtd_16_30,
-        qtd_31_45,
-        qtd_46_60,
-        qtd_61_75,
-        qtd_76_90,
-        qtd_91_105,
-        preventivas_em_dia,
-    ],
-    "Tipo": [
-        "Preventivas",
-        "Preditivas",
-        "Preditivas",
-        "Preditivas",
-        "Preditivas",
-        "Preditivas",
-        "Preditivas",
-        "Preditivas",
-        "Preditivas",
-        "Preventivas",
-    ]
-})
+        "Faixa / Indicador": [
+            "Preventivas em Fila",
+            "Preditivas em Fila",
+            "0-15",
+            "16-30",
+            "31-45",
+            "46-60",
+            "61-75",
+            "76-90",
+            "91-105",
+            "Preventivas em Dia",
+        ],
+        "Quantidade": [
+            preventivas_em_fila,
+            preditivas_em_fila,
+            qtd_0_15,
+            qtd_16_30,
+            qtd_31_45,
+            qtd_46_60,
+            qtd_61_75,
+            qtd_76_90,
+            qtd_91_105,
+            preventivas_em_dia,
+        ],
+        "Tipo": [
+            "Preventivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preditivas",
+            "Preventivas",
+        ]
+    })
 
     ordem_x = list(grafico_data["Faixa / Indicador"])
     fig_consolidado = px.bar(
