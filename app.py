@@ -53,9 +53,6 @@ EXTRA_COLUMNS_DEFAULTS = {
 }
 
 
-# ----------------------------
-# UTILITÁRIOS
-# ----------------------------
 def normalizar_resposta(valor):
     if pd.isna(valor):
         return "NÃO"
@@ -84,7 +81,6 @@ def carregar_arquivo(uploaded_file):
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
 
-    # Compatibilidade com versões antigas
     if "Ciclos de Preventiva Realizados" in df.columns and CYCLE_COL not in df.columns:
         df[CYCLE_COL] = df["Ciclos de Preventiva Realizados"]
 
@@ -118,7 +114,6 @@ def calcular_info_linha(row, hoje=None):
     ultima = row.get("Última Revisão")
     proxima = row.get("Data da Próxima Revisão")
     intervalo = row.get("Intervalo de Revisão", 120)
-
     try:
         intervalo = int(intervalo)
     except Exception:
@@ -216,31 +211,19 @@ def dataframe_para_excel(df):
     return output
 
 
-# ----------------------------
-# DASHBOARD
-# ----------------------------
 def mostrar_metricas(df_filtrado):
     total_ativos = int(df_filtrado["PLACA"].nunique()) if not df_filtrado.empty else 0
     total_preventivas_em_dia = int((df_filtrado["Status Preventiva"] == "EM DIA").sum())
     total_preditivas_em_dia = int((df_filtrado["Qtd Preditivas Atrasadas"] == 0).sum())
     total_preventivas_em_fila = int((df_filtrado["Status Preventiva"] == "ATRASADA").sum())
-
-    if total_ativos:
-        concluidas_mask = (
-            pd.to_numeric(df_filtrado.get(CYCLE_COL, 0), errors="coerce").fillna(0) > 0
-        ) | (
-            df_filtrado.get("Preventiva Concluída", "PENDENTE").astype(str).str.upper() == "SIM"
-        )
-        pct_prev_concluidas = (concluidas_mask.sum() / total_ativos) * 100
-    else:
-        pct_prev_concluidas = 0
+    pct_preventivas_em_dia = (total_preventivas_em_dia / total_ativos * 100) if total_ativos else 0
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total de Ativos", f"{total_ativos}")
     c2.metric("Preventivas em Dia", f"{total_preventivas_em_dia}")
     c3.metric("Preditivas em Dia", f"{total_preditivas_em_dia}")
     c4.metric("Preventivas em Fila", f"{total_preventivas_em_fila}")
-    c5.metric("% Preventivas Concluídas", f"{pct_prev_concluidas:.1f}%")
+    c5.metric("% Preventivas em Dia", f"{pct_preventivas_em_dia:.1f}%")
 
 
 def dashboard(df):
@@ -252,7 +235,6 @@ def dashboard(df):
         marcas = sorted(df["MARCA"].dropna().astype(str).unique().tolist()) if "MARCA" in df.columns else []
         tipos = sorted(df["TIPO DE FROTA"].dropna().astype(str).unique().tolist()) if "TIPO DE FROTA" in df.columns else []
         status = sorted(df["Status Geral"].dropna().astype(str).unique().tolist()) if "Status Geral" in df.columns else []
-
         sel_marcas = st.multiselect("Marca", marcas, default=marcas)
         sel_tipos = st.multiselect("Tipo de frota", tipos, default=tipos)
         sel_status = st.multiselect("Status geral", status, default=status)
@@ -303,37 +285,63 @@ def dashboard(df):
         prev_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
         prev_em_dia = max(total_ativos - prev_atrasadas, 0)
 
-        pizza_data = pd.DataFrame({
-            "Categoria": [
-                "Preditivas Atrasadas",
-                "Preditivas em Dia",
-                "Preventivas Atrasadas",
-                "Preventivas em Dia",
-            ],
-            "Quantidade": [
-                pred_atrasadas,
-                pred_em_dia,
-                prev_atrasadas,
-                prev_em_dia,
-            ]
+        pred_data = pd.DataFrame({
+            "Status": ["Preditivas Atrasadas", "Preditivas em Dia"],
+            "Quantidade": [pred_atrasadas, pred_em_dia],
+        })
+        prev_data = pd.DataFrame({
+            "Status": ["Preventivas Atrasadas", "Preventivas em Dia"],
+            "Quantidade": [prev_atrasadas, prev_em_dia],
         })
 
-        fig_status = px.pie(
-            pizza_data,
-            names="Categoria",
-            values="Quantidade",
-            hole=0.45,
-            color="Categoria",
-            color_discrete_map={
-                "Preditivas Atrasadas": "#ff7f0e",
-                "Preditivas em Dia": "#1f77b4",
-                "Preventivas Atrasadas": "#d62728",
-                "Preventivas em Dia": "#2ca02c",
-            },
-        )
-        fig_status.update_traces(textinfo="percent+label")
-        st.plotly_chart(fig_status, use_container_width=True)
-        st.dataframe(pizza_data, use_container_width=True, hide_index=True)
+        pie_cols = st.columns(2)
+        with pie_cols[0]:
+            st.caption("Preditivas")
+            fig_pred = px.pie(
+                pred_data,
+                names="Status",
+                values="Quantidade",
+                hole=0.45,
+                color="Status",
+                color_discrete_map={
+                    "Preditivas Atrasadas": "#ff7f0e",
+                    "Preditivas em Dia": "#1f77b4",
+                },
+            )
+            fig_pred.update_traces(textinfo="percent+label")
+            fig_pred.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
+            st.plotly_chart(fig_pred, use_container_width=True)
+
+        with pie_cols[1]:
+            st.caption("Preventivas")
+            fig_prev = px.pie(
+                prev_data,
+                names="Status",
+                values="Quantidade",
+                hole=0.45,
+                color="Status",
+                color_discrete_map={
+                    "Preventivas Atrasadas": "#d62728",
+                    "Preventivas em Dia": "#2ca02c",
+                },
+            )
+            fig_prev.update_traces(textinfo="percent+label")
+            fig_prev.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
+            st.plotly_chart(fig_prev, use_container_width=True)
+
+        resumo_pizza = pd.DataFrame({
+            "Tipo": ["Preditivas", "Preditivas", "Preventivas", "Preventivas"],
+            "Status": ["Atrasadas", "Em Dia", "Atrasadas", "Em Dia"],
+            "Quantidade": [pred_atrasadas, pred_em_dia, prev_atrasadas, prev_em_dia],
+            "Percentual": [
+                (pred_atrasadas / total_ativos * 100) if total_ativos else 0,
+                (pred_em_dia / total_ativos * 100) if total_ativos else 0,
+                (prev_atrasadas / total_ativos * 100) if total_ativos else 0,
+                (prev_em_dia / total_ativos * 100) if total_ativos else 0,
+            ]
+        })
+        resumo_pizza["Percentual"] = resumo_pizza["Percentual"].map(lambda x: f"{x:.1f}%")
+        st.dataframe(resumo_pizza, use_container_width=True, hide_index=True)
 
     st.subheader("📊 Consolidado de atrasos, preditivas e preventivas")
     preventivas_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
@@ -419,7 +427,6 @@ def dashboard(df):
     else:
         meta_por_dia = 3
         ritmo_atual = 1
-
         dias_meta = int((pendentes / meta_por_dia) + 0.999)
         dias_atual = int((pendentes / ritmo_atual) + 0.999)
         horizonte = max(dias_meta, dias_atual)
@@ -432,54 +439,36 @@ def dashboard(df):
 
         fig_proj = go.Figure()
         fig_proj.add_trace(go.Scatter(
-            x=datas,
-            y=progresso_atual,
-            mode="lines+markers",
-            name="Ritmo Atual",
-            line=dict(color="#1f77b4", width=3),
-            marker=dict(size=6, color="#1f77b4"),
+            x=datas, y=progresso_atual, mode="lines+markers", name="Ritmo Atual",
+            line=dict(color="#1f77b4", width=3), marker=dict(size=6, color="#1f77b4"),
             hovertemplate="%{x|%d/%m/%Y}<br>Ritmo Atual: %{y}<extra></extra>",
         ))
         fig_proj.add_trace(go.Scatter(
-            x=datas,
-            y=progresso_meta,
-            mode="lines+markers",
-            name="Meta (3/dia)",
-            line=dict(color="#2ca02c", width=3),
-            marker=dict(size=6, color="#2ca02c"),
+            x=datas, y=progresso_meta, mode="lines+markers", name="Meta (3/dia)",
+            line=dict(color="#2ca02c", width=3), marker=dict(size=6, color="#2ca02c"),
             hovertemplate="%{x|%d/%m/%Y}<br>Meta: %{y}<extra></extra>",
         ))
         fig_proj.add_trace(go.Scatter(
-            x=datas,
-            y=total_atrasadas,
-            mode="lines",
-            name="Total de Atrasadas",
+            x=datas, y=total_atrasadas, mode="lines", name="Total de Atrasadas",
             line=dict(color="#7f7f7f", width=2, dash="dash"),
             hovertemplate="%{x|%d/%m/%Y}<br>Total de Atrasadas: %{y}<extra></extra>",
         ))
 
         data_meta = hoje + pd.Timedelta(days=dias_meta)
         data_atual = hoje + pd.Timedelta(days=dias_atual)
-
         fig_proj.add_trace(go.Scatter(
-            x=[data_meta],
-            y=[pendentes],
-            mode="markers+text",
+            x=[data_meta], y=[pendentes], mode="markers+text",
             marker=dict(size=12, color="#2ca02c", symbol="diamond"),
             text=[f"Meta atinge total<br>{data_meta.strftime('%d/%m')}"] ,
-            textposition="top center",
+            textposition="top center", showlegend=False,
             hovertemplate="%{x|%d/%m/%Y}<br>Meta atinge o total: %{y}<extra></extra>",
-            showlegend=False,
         ))
         fig_proj.add_trace(go.Scatter(
-            x=[data_atual],
-            y=[pendentes],
-            mode="markers+text",
+            x=[data_atual], y=[pendentes], mode="markers+text",
             marker=dict(size=12, color="#1f77b4", symbol="diamond"),
             text=[f"Ritmo atual atinge total<br>{data_atual.strftime('%d/%m')}"] ,
-            textposition="bottom center",
+            textposition="bottom center", showlegend=False,
             hovertemplate="%{x|%d/%m/%Y}<br>Ritmo atual atinge o total: %{y}<extra></extra>",
-            showlegend=False,
         ))
 
         fig_proj.update_layout(
@@ -523,9 +512,6 @@ def dashboard(df):
     st.dataframe(df_f[cols_show], use_container_width=True, hide_index=True)
 
 
-# ----------------------------
-# CADASTRO
-# ----------------------------
 def pagina_cadastro(df):
     st.title("🛠️ Cadastro / Atualização")
     st.caption("Registre as preditivas e confirme a preventiva do ciclo de 120 dias.")
@@ -563,7 +549,6 @@ def pagina_cadastro(df):
                 novos[col] = st.checkbox(col, value=current)
         obs = st.text_area("Observações", value=str(row.get("Observações", "")))
         salvar_preds = st.form_submit_button("Salvar preditivas", type="primary")
-
         if salvar_preds:
             for col, val in novos.items():
                 df.at[idx, col] = "SIM" if val else "NÃO"
@@ -582,7 +567,6 @@ def pagina_cadastro(df):
         valor_atual = str(row.get("Preventiva Concluída", "PENDENTE")).upper()
         if valor_atual not in ["PENDENTE", "SIM", "NÃO"]:
             valor_atual = "PENDENTE"
-
         realizou_prev = st.selectbox(
             "A preventiva foi realizada?",
             options=["PENDENTE", "SIM", "NÃO"],
@@ -600,7 +584,6 @@ def pagina_cadastro(df):
             disabled=not pode_confirmar,
         )
         salvar_prev = st.form_submit_button("Confirmar preventiva", disabled=not pode_confirmar)
-
         if salvar_prev:
             df.at[idx, "Preventiva Concluída"] = realizou_prev
             if realizou_prev == "SIM":
@@ -617,7 +600,6 @@ def pagina_cadastro(df):
                     df.at[idx, "Preventiva Concluída"] = "PENDENTE"
             elif realizou_prev == "NÃO":
                 df.at[idx, "Data da Preventiva Realizada"] = pd.NaT
-
             df = recalcular_indicadores(df)
             st.session_state["df_manutencao"] = df
             st.success("Preventiva atualizada com sucesso.")
@@ -637,9 +619,6 @@ def pagina_cadastro(df):
     )
 
 
-# ----------------------------
-# AJUDA / MAIN
-# ----------------------------
 def pagina_ajuda():
     st.title("ℹ️ Como usar")
     st.markdown(
@@ -658,8 +637,8 @@ def pagina_ajuda():
         - **Preventivas em Dia**: ativos cuja preventiva ainda não venceu.
         - **Preditivas em Dia**: ativos sem preditivas atrasadas até a data atual.
         - **Preventivas em Fila**: ativos com preventiva atrasada aguardando regularização.
-        - **% Preventivas Concluídas**: percentual de ativos com pelo menos 1 preventiva concluída ou com a preventiva atual marcada como SIM.
-        - **Pizza de distribuição**: exibe 4 informações — preditivas atrasadas, preditivas em dia, preventivas atrasadas e preventivas em dia.
+        - **% Preventivas em Dia**: percentual de ativos cuja preventiva está em dia no filtro atual.
+        - **Pizza / donuts**: um donut para Preditivas e outro para Preventivas, assim cada par (em dia/atrasadas) soma 100% dentro do próprio tipo.
         - **Gráfico consolidado**: exibe preventivas atrasadas, preditivas atrasadas, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
         - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas atrasadas, a linha da meta e o total de atrasadas a zerar com datas estimadas.
         """
@@ -670,7 +649,6 @@ def main():
     st.sidebar.title("📂 Dados")
     st.sidebar.write("Envie sua planilha Excel de manutenção preventiva.")
     uploaded_file = st.sidebar.file_uploader("Selecione o arquivo .xlsx", type=["xlsx"])
-
     if uploaded_file is None:
         st.title("Dashboard de Manutenção Preventiva")
         st.info("Envie uma planilha .xlsx para começar.")
@@ -687,13 +665,8 @@ def main():
         st.session_state["nome_arquivo"] = uploaded_file.name
 
     df = st.session_state["df_manutencao"]
-
     st.sidebar.divider()
-    pagina = st.sidebar.radio(
-        "Navegação",
-        ["Dashboard", "Cadastro / Atualização", "Ajuda"],
-        index=0,
-    )
+    pagina = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro / Atualização", "Ajuda"], index=0)
 
     excel_bytes = dataframe_para_excel(df)
     st.sidebar.download_button(
