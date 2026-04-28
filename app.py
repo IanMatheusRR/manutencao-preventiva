@@ -351,34 +351,6 @@ def dashboard(df):
         ],
     })
 
-    ordem_x = list(grafico_data["Faixa / Indicador"])
-    fig_consolidado = px.bar(
-        grafico_data,
-        x="Faixa / Indicador",
-        y="Quantidade",
-        color="Tipo",
-        text="Quantidade",
-        category_orders={"Faixa / Indicador": ordem_x},
-        color_discrete_map={
-            "Atrasos Preventiva": "#d62728",
-            "Atrasos Preditiva": "#ff7f0e",
-            "Preditivas": "#1f77b4",
-            "Preventivas": "#2ca02c",
-        },
-    )
-    fig_consolidado.update_traces(textposition="outside")
-    fig_consolidado.update_layout(
-        xaxis_title="Faixa / Indicador",
-        yaxis_title="Quantidade",
-        legend_title="Grupo",
-        uniformtext_minsize=8,
-        uniformtext_mode="hide",
-        height=500,
-    )
-    fig_consolidado.update_xaxes(tickangle=-20)
-    st.plotly_chart(fig_consolidado, use_container_width=True)
-    st.dataframe(grafico_data, use_container_width=True, hide_index=True)
-
     st.subheader("📈 Plano de recuperação das preventivas atrasadas")
     st.caption(
         "A linha azul mostra o ritmo atual de regularização, a verde mostra a meta, "
