@@ -454,7 +454,6 @@ def dashboard(df):
     )
     fig_consolidado.update_xaxes(tickangle=-20)
     st.plotly_chart(fig_consolidado, use_container_width=True)
-    st.dataframe(grafico_data, use_container_width=True, hide_index=True)
 
     st.subheader("📈 Plano de recuperação das preventivas em fila")
     st.caption(
@@ -468,7 +467,7 @@ def dashboard(df):
         st.success("✅ Não há preventivas em fila no filtro atual.")
     else:
         meta_por_dia = 3
-        ritmo_atual = 1
+        ritmo_atual = 2
         dias_meta = int((pendentes / meta_por_dia) + 0.999)
         dias_atual = int((pendentes / ritmo_atual) + 0.999)
         horizonte = max(dias_meta, dias_atual)
