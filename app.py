@@ -319,55 +319,15 @@ def dashboard(df):
         fig_etapas.update_layout(showlegend=False, xaxis_title="Faixa (dias)", yaxis_title="Preditivas realizadas")
         st.plotly_chart(fig_etapas, use_container_width=True)
 
-    
-with graficos_cols[1]:
-    st.subheader("📈 Projeção de conclusão das preventivas")
-
-    # Quantidade de preventivas pendentes
-    pendentes = int((df_f["Preventiva Concluída"] != "SIM").sum())
-
-    if pendentes == 0:
-        st.success("✅ Todas as preventivas já foram concluídas!")
-    else:
-        meta_por_dia = 3
-        ritmo_atual = 1  # estimativa conservadora
-
-        dias_meta = int((pendentes / meta_por_dia) + 0.999)
-        dias_atual = int((pendentes / ritmo_atual) + 0.999)
-
-        dias = list(range(0, max(dias_meta, dias_atual) + 1))
-
-        curva_meta = [max(pendentes - meta_por_dia * d, 0) for d in dias]
-        curva_atual = [max(pendentes - ritmo_atual * d, 0) for d in dias]
-
-        df_proj = pd.DataFrame({
-            "Dias": dias,
-            "Meta (3/dia)": curva_meta,
-            "Ritmo Atual": curva_atual
-        })
-
-        fig_proj = px.line(
-            df_proj,
-            x="Dias",
-            y=["Meta (3/dia)", "Ritmo Atual"],
-            markers=True,
-        )
-
-        fig_proj.update_layout(
-            xaxis_title="Dias a partir de hoje",
-            yaxis_title="Preventivas pendentes",
-            legend_title="Cenário",
-        )
-
-        st.plotly_chart(fig_proj, use_container_width=True)
-
-        st.info(
-            f"""
-            🔹 **Preventivas pendentes:** {pendentes}  
-            🔹 **Com a meta (3/dia):** ~{dias_meta} dias  
-            🔹 **No ritmo atual:** ~{dias_atual} dias  
-            """
-        )
+    with graficos_cols[1]:
+        st.subheader("Top 20 ativos com preventiva mais próxima")
+        top_ativos = df_f.sort_values("Dias p/ Próxima", ascending=True).head(20)[["PLACA", "Dias p/ Próxima", "Status Geral"]]
+        if top_ativos.empty:
+            st.info("Sem dados para exibir.")
+        else:
+            fig_top = px.bar(top_ativos, x="PLACA", y="Dias p/ Próxima", color="Status Geral", text="Dias p/ Próxima")
+            fig_top.update_layout(xaxis_title="Placa", yaxis_title="Dias para próxima preventiva")
+            st.plotly_chart(fig_top, use_container_width=True)
 
     st.subheader("Base detalhada")
     cols_show = [
