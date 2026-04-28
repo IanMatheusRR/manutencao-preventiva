@@ -425,7 +425,7 @@ def dashboard(df):
         st.success("✅ Não há preventivas atrasadas no filtro atual.")
     else:
         meta_por_dia = 3
-        ritmo_atual = 1
+        ritmo_atual = 2
         dias_meta = int((pendentes / meta_por_dia) + 0.999)
         dias_atual = int((pendentes / ritmo_atual) + 0.999)
         horizonte = max(dias_meta, dias_atual)
