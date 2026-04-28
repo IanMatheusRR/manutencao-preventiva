@@ -223,7 +223,7 @@ def mostrar_metricas(df_filtrado):
     total_ativos = int(df_filtrado["PLACA"].nunique()) if not df_filtrado.empty else 0
     total_preventivas_em_dia = int((df_filtrado["Status Preventiva"] == "EM DIA").sum())
     total_preditivas_em_dia = int((df_filtrado["Qtd Preditivas Atrasadas"] == 0).sum())
-    total_preventivas_atrasadas = int((df_filtrado["Status Preventiva"] == "ATRASADA").sum())
+    total_preventivas_em_fila = int((df_filtrado["Status Preventiva"] == "ATRASADA").sum())
 
     if total_ativos:
         concluidas_mask = (
@@ -239,7 +239,7 @@ def mostrar_metricas(df_filtrado):
     c1.metric("Total de Ativos", f"{total_ativos}")
     c2.metric("Preventivas em Dia", f"{total_preventivas_em_dia}")
     c3.metric("Preditivas em Dia", f"{total_preditivas_em_dia}")
-    c4.metric("Preventivas Atrasadas", f"{total_preventivas_atrasadas}")
+    c4.metric("Preventivas em Fila", f"{total_preventivas_em_fila}")
     c5.metric("% Preventivas Concluídas", f"{pct_prev_concluidas:.1f}%")
 
 
@@ -296,16 +296,44 @@ def dashboard(df):
             st.dataframe(faixa_counts, use_container_width=True, hide_index=True)
 
     with top_cols[1]:
-        st.subheader("Distribuição do status geral")
-        status_counts = (
-            df_f["Status Geral"].value_counts().rename_axis("Status").reset_index(name="Quantidade")
-            if not df_f.empty else pd.DataFrame({"Status": [], "Quantidade": []})
+        st.subheader("Distribuição de Preditivas e Preventivas")
+        total_ativos = int(df_f["PLACA"].nunique()) if not df_f.empty else 0
+        pred_atrasadas = int((df_f["Qtd Preditivas Atrasadas"] > 0).sum()) if "Qtd Preditivas Atrasadas" in df_f.columns else 0
+        pred_em_dia = max(total_ativos - pred_atrasadas, 0)
+        prev_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
+        prev_em_dia = max(total_ativos - prev_atrasadas, 0)
+
+        pizza_data = pd.DataFrame({
+            "Categoria": [
+                "Preditivas Atrasadas",
+                "Preditivas em Dia",
+                "Preventivas Atrasadas",
+                "Preventivas em Dia",
+            ],
+            "Quantidade": [
+                pred_atrasadas,
+                pred_em_dia,
+                prev_atrasadas,
+                prev_em_dia,
+            ]
+        })
+
+        fig_status = px.pie(
+            pizza_data,
+            names="Categoria",
+            values="Quantidade",
+            hole=0.45,
+            color="Categoria",
+            color_discrete_map={
+                "Preditivas Atrasadas": "#ff7f0e",
+                "Preditivas em Dia": "#1f77b4",
+                "Preventivas Atrasadas": "#d62728",
+                "Preventivas em Dia": "#2ca02c",
+            },
         )
-        if status_counts.empty:
-            st.info("Sem dados para exibir.")
-        else:
-            fig_status = px.pie(status_counts, names="Status", values="Quantidade", hole=0.5)
-            st.plotly_chart(fig_status, use_container_width=True)
+        fig_status.update_traces(textinfo="percent+label")
+        st.plotly_chart(fig_status, use_container_width=True)
+        st.dataframe(pizza_data, use_container_width=True, hide_index=True)
 
     st.subheader("📊 Consolidado de atrasos, preditivas e preventivas")
     preventivas_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
@@ -377,6 +405,7 @@ def dashboard(df):
     )
     fig_consolidado.update_xaxes(tickangle=-20)
     st.plotly_chart(fig_consolidado, use_container_width=True)
+    st.dataframe(grafico_data, use_container_width=True, hide_index=True)
 
     st.subheader("📈 Plano de recuperação das preventivas atrasadas")
     st.caption(
@@ -628,8 +657,9 @@ def pagina_ajuda():
         - **Total de Ativos**: quantidade de placas únicas.
         - **Preventivas em Dia**: ativos cuja preventiva ainda não venceu.
         - **Preditivas em Dia**: ativos sem preditivas atrasadas até a data atual.
-        - **Preventivas Atrasadas**: ativos com próxima preventiva vencida e não concluída.
+        - **Preventivas em Fila**: ativos com preventiva atrasada aguardando regularização.
         - **% Preventivas Concluídas**: percentual de ativos com pelo menos 1 preventiva concluída ou com a preventiva atual marcada como SIM.
+        - **Pizza de distribuição**: exibe 4 informações — preditivas atrasadas, preditivas em dia, preventivas atrasadas e preventivas em dia.
         - **Gráfico consolidado**: exibe preventivas atrasadas, preditivas atrasadas, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
         - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas atrasadas, a linha da meta e o total de atrasadas a zerar com datas estimadas.
         """
