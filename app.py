@@ -381,16 +381,15 @@ def dashboard(df):
         resumo_pizza["Percentual"] = resumo_pizza["Percentual"].map(lambda x: f"{x:.1f}%")
         st.dataframe(resumo_pizza, use_container_width=True, hide_index=True)
 
-    st.subheader("📊 Consolidado de atrasos, preditivas e preventivas")
+    st.subheader("📊 Consolidado de fila, preditivas e preventivas")
     preventivas_atrasadas = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
-    preventivas_em_dia = int((df_f["Status Preventiva"] == "EM DIA").sum())
     preditivas_atrasadas = int((df_f["Qtd Preditivas Atrasadas"] > 0).sum()) if "Qtd Preditivas Atrasadas" in df_f.columns else 0
     preventivas_realizadas = int(pd.to_numeric(df_f.get(CYCLE_COL, 0), errors="coerce").fillna(0).sum())
 
     grafico_data = pd.DataFrame({
         "Faixa / Indicador": [
-            "Preventivas atrasadas",
-            "Preditivas atrasadas",
+            "Preventivas em fila",
+            "Preditivas em fila",
             "0-15",
             "16-30",
             "31-45",
@@ -413,8 +412,8 @@ def dashboard(df):
             preventivas_em_dia,
         ],
         "Tipo": [
-            "Atrasos Preventiva",
-            "Atrasos Preditiva",
+            "Fila Preventiva",
+            "Fila Preditiva",
             "Preditivas",
             "Preditivas",
             "Preditivas",
@@ -435,8 +434,8 @@ def dashboard(df):
         text="Quantidade",
         category_orders={"Faixa / Indicador": ordem_x},
         color_discrete_map={
-            "Atrasos Preventiva": "#C44E52",
-            "Atrasos Preditiva": "#DD8452",
+            "Fila Preventiva": "#C44E52",
+            "Fila Preditiva": "#DD8452",
             "Preditivas": "#4C72B0",
             "Preventivas": "#55A868",
         },
@@ -454,16 +453,16 @@ def dashboard(df):
     st.plotly_chart(fig_consolidado, use_container_width=True)
     st.dataframe(grafico_data, use_container_width=True, hide_index=True)
 
-    st.subheader("📈 Plano de recuperação das preventivas atrasadas")
+    st.subheader("📈 Plano de recuperação das preventivas em fila")
     st.caption(
         "A linha azul mostra o ritmo atual de regularização, a verde mostra a meta, "
-        "e a cinza mostra o total de preventivas atrasadas que precisa ser zerado. "
+        "e a cinza mostra o total de preventivas em fila que precisa ser zerado. "
         "As datas estimadas consideram segunda a sábado como dias operacionais e ignoram domingo."
     )
 
     pendentes = int((df_f["Status Preventiva"] == "ATRASADA").sum()) if "Status Preventiva" in df_f.columns else 0
     if pendentes == 0:
-        st.success("✅ Não há preventivas atrasadas no filtro atual.")
+        st.success("✅ Não há preventivas em fila no filtro atual.")
     else:
         meta_por_dia = 3
         ritmo_atual = 1
@@ -500,9 +499,9 @@ def dashboard(df):
             x=datas,
             y=total_atrasadas,
             mode="lines",
-            name="Total de Atrasadas",
+            name="Total em Fila",
             line=dict(color="#7F7F7F", width=2, dash="dash"),
-            hovertemplate="%{x|%d/%m/%Y}<br>Total de Atrasadas: %{y}<extra></extra>",
+            hovertemplate="%{x|%d/%m/%Y}<br>Total em Fila: %{y}<extra></extra>",
         ))
 
         data_meta = adicionar_dias_operacionais(hoje, dias_meta)
@@ -543,13 +542,13 @@ def dashboard(df):
         c_meta, c_atual, c_atrasadas = st.columns(3)
         c_meta.metric("Data estimada na meta", data_meta.strftime("%d/%m/%Y"), delta=f"{dias_meta} dias operacionais")
         c_atual.metric("Data estimada no ritmo atual", data_atual.strftime("%d/%m/%Y"), delta=f"{dias_atual} dias operacionais")
-        c_atrasadas.metric("Preventivas atrasadas hoje", f"{pendentes}")
+        c_atrasadas.metric("Preventivas em fila hoje", f"{pendentes}")
 
         st.info(
             f"""
             🔹 **Leitura do gráfico:** a linha azul mostra a **regularização acumulada no ritmo atual**,
             a linha verde mostra a **regularização acumulada na meta**, e a linha cinza mostra o
-            **total de preventivas atrasadas a zerar**.  
+            **total de preventivas em fila a zerar**.  
             🔹 **Meta definida:** {meta_por_dia} preventivas/dia.  
             🔹 **Ritmo atual considerado:** {ritmo_atual} preventiva/dia.  
             🔹 **Datas estimadas:** consideram **segunda a sábado** como dias operacionais e **ignoram domingo**.  
@@ -693,12 +692,12 @@ def pagina_ajuda():
         **Indicadores do dashboard**
         - **Total de Ativos**: quantidade de placas únicas.
         - **Preventivas em Dia**: ativos cuja preventiva ainda não venceu.
-        - **Preditivas em Dia**: ativos sem preditivas atrasadas até a data atual.
+        - **Preditivas em Dia**: ativos sem preditivas em fila até a data atual.
         - **Preventivas em Fila**: ativos com preventiva atrasada aguardando regularização.
         - **% Preventivas em Dia**: percentual de ativos cuja preventiva está em dia no filtro atual.
         - **Donuts**: um donut para Preditivas e outro para Preventivas, assim cada par (em dia/atrasadas) soma 100% dentro do próprio tipo.
-        - **Gráfico consolidado**: exibe preventivas atrasadas, preditivas atrasadas, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
-        - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas atrasadas, a linha da meta e o total de atrasadas a zerar com datas estimadas em dias operacionais (seg. a sáb.).
+        - **Gráfico consolidado**: exibe preventivas em fila, preditivas em fila, preditivas realizadas por faixa de 15 dias e total de preventivas realizadas.
+        - **Gráfico de recuperação das atrasadas**: exibe a regularização acumulada das preventivas em fila, a linha da meta e o total de atrasadas a zerar com datas estimadas em dias operacionais (seg. a sáb.).
         """
     )
 
