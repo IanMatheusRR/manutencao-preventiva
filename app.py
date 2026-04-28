@@ -1,5 +1,5 @@
 import io
-from datetime import datetime, date
+from datetime import datetime, timedelta, date
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -137,6 +137,24 @@ def recalcular_indicadores(df):
 
 
 # =============================
+# Cards (KPIs)
+# =============================
+def mostrar_metricas(df):
+    total_ativos = df["PLACA"].nunique()
+    preventivas_em_dia = (df["Status Preventiva"] == "EM DIA").sum()
+    preventivas_atrasadas = (df["Status Preventiva"] == "ATRASADA").sum()
+    preditivas_em_dia = (df["Qtd Preditivas Atrasadas"] == 0).sum()
+    pct_em_dia = (preventivas_em_dia / total_ativos * 100) if total_ativos else 0
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total de Ativos", total_ativos)
+    c2.metric("Preventivas em Dia", preventivas_em_dia)
+    c3.metric("Preditivas em Dia", preditivas_em_dia)
+    c4.metric("Preventivas Atrasadas", preventivas_atrasadas)
+    c5.metric("% Preventivas em Dia", f"{pct_em_dia:.1f}%")
+
+
+# =============================
 # Dashboard
 # =============================
 def dashboard(df):
@@ -192,7 +210,12 @@ def dashboard(df):
 
     st.divider()
 
-    # ===== GRÁFICO DE FAIXA (SECUNDÁRIO) =====
+    # ===== CARDS =====
+    mostrar_metricas(df)
+
+    st.divider()
+
+    # ===== GRÁFICO DE FAIXA =====
     st.subheader("Quantidade de ativos por faixa de vencimento")
 
     faixa_order = ["Atrasada", "0-15 dias", "16-30 dias", "31-60 dias", "61-120 dias", ">120 dias"]
@@ -211,19 +234,54 @@ def dashboard(df):
 
 
 # =============================
+# Cadastro / Atualização
+# =============================
+def pagina_cadastro(df):
+    st.title("🛠️ Cadastro / Atualização")
+
+    placa = st.selectbox("Selecione a carreta", df["PLACA"].tolist())
+    idx = df.index[df["PLACA"] == placa][0]
+    row = df.loc[idx]
+
+    with st.form("form_preditivas"):
+        novos = {}
+        for col in PRED_COLS:
+            novos[col] = st.checkbox(col, value=row[col] == "SIM")
+        obs = st.text_area("Observações", value=row["Observações"])
+        salvar = st.form_submit_button("Salvar")
+
+    if salvar:
+        for col, val in novos.items():
+            df.at[idx, col] = "SIM" if val else "NÃO"
+        df.at[idx, "Observações"] = obs
+        df = recalcular_indicadores(df)
+        st.session_state["df"] = df
+        st.success("Atualizado com sucesso")
+        st.rerun()
+
+
+# =============================
 # Main
 # =============================
 def main():
     st.sidebar.title("📂 Dados")
-    uploaded_file = st.sidebar.file_uploader("Selecione a planilha .xlsx", type=["xlsx"])
+    uploaded = st.sidebar.file_uploader("Selecione a planilha .xlsx", type=["xlsx"])
 
-    if uploaded_file is None:
-        st.info("Envie uma planilha para iniciar o dashboard.")
+    if uploaded is None:
+        st.info("Envie uma planilha para iniciar.")
         return
 
-    df = carregar_arquivo(uploaded_file)
-    if df is not None:
+    if "df" not in st.session_state:
+        st.session_state["df"] = carregar_arquivo(uploaded)
+
+    df = st.session_state["df"]
+
+    pagina = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro / Atualização"])
+
+    if pagina == "Dashboard":
         dashboard(df)
+    else:
+        pagina_cadastro(df)
 
 
 if __name__ == "__main__":
