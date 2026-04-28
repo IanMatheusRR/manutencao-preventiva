@@ -386,6 +386,7 @@ def dashboard(df):
     preditivas_atrasadas = int((df_f["Qtd Preditivas Em Filas"] > 0).sum()) if "Qtd Preditivas Em Filas" in df_f.columns else 0
     preventivas_realizadas = int(pd.to_numeric(df_f.get(CYCLE_COL, 0), errors="coerce").fillna(0).sum())
 
+    
     grafico_data = pd.DataFrame({
         "Faixa / Indicador": [
             "Preventivas em Fila",
