@@ -288,14 +288,20 @@ def dashboard(df):
     mostrar_metricas(df_f)
     st.divider()
 
-    faixa_order = ["Atrasada", "0-15 dias", "16-30 dias", "31-60 dias", "61-120 dias", ">120 dias"]
-    faixa_counts = (
-        df_f["Faixa"].value_counts().rename_axis("Faixa").reset_index(name="Quantidade")
-        if not df_f.empty else pd.DataFrame({"Faixa": [], "Quantidade": []})
+    
+faixa_counts = (
+    df_f["Faixa"].value_counts().rename_axis("Faixa").reset_index(name="Quantidade")
+    if not df_f.empty else pd.DataFrame({"Faixa": [], "Quantidade": []})
+)
+
+if not faixa_counts.empty:
+    faixa_counts["Faixa"] = faixa_counts["Faixa"].replace({
+        "Atrasada": "Em Fila"
+    })
+    faixa_counts["ord"] = faixa_counts["Faixa"].apply(
+        lambda x: faixa_order.index(x) if x in faixa_order else 999
     )
-    if not faixa_counts.empty:
-        faixa_counts["ord"] = faixa_counts["Faixa"].apply(lambda x: faixa_order.index(x) if x in faixa_order else 999)
-        faixa_counts = faixa_counts.sort_values("ord").drop(columns="ord")
+    faixa_counts = faixa_counts.sort_values("ord").drop(columns="ord")
 
     top_cols = st.columns([1.2, 1])
     with top_cols[0]:
