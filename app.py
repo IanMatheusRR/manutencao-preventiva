@@ -294,6 +294,8 @@ def dashboard(df):
         if not df_f.empty else pd.DataFrame({"Faixa": [], "Quantidade": []})
     )
     if not faixa_counts.empty:
+        faixa_counts["Faixa"] = faixa_counts["Faixa"].replace({"Atrasada": "Em Fila"})
+    if not faixa_counts.empty:
         faixa_counts["ord"] = faixa_counts["Faixa"].apply(lambda x: faixa_order.index(x) if x in faixa_order else 999)
         faixa_counts = faixa_counts.sort_values("ord").drop(columns="ord")
 
@@ -466,7 +468,7 @@ def dashboard(df):
         st.success("✅ Não há preventivas em fila no filtro atual.")
     else:
         meta_por_dia = 3
-        ritmo_atual = 2
+        ritmo_atual = 1
         dias_meta = int((pendentes / meta_por_dia) + 0.999)
         dias_atual = int((pendentes / ritmo_atual) + 0.999)
         horizonte = max(dias_meta, dias_atual)
