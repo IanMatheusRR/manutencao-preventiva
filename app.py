@@ -304,8 +304,8 @@ def dashboard(df):
                 hole=0.45,
                 color="Status",
                 color_discrete_map={
-                    "Preditivas Atrasadas": "#ff7f0e",
-                    "Preditivas em Dia": "#1f77b4",
+                    "Preditivas Atrasadas": "#DD8452",
+                    "Preditivas em Dia": "#4C72B0",
                 },
             )
             fig_pred.update_traces(textinfo="percent+label")
@@ -321,8 +321,8 @@ def dashboard(df):
                 hole=0.45,
                 color="Status",
                 color_discrete_map={
-                    "Preventivas Atrasadas": "#d62728",
-                    "Preventivas em Dia": "#2ca02c",
+                    "Preventivas Atrasadas": "#C44E52",
+                    "Preventivas em Dia": "#55A868",
                 },
             )
             fig_prev.update_traces(textinfo="percent+label")
@@ -396,10 +396,10 @@ def dashboard(df):
         text="Quantidade",
         category_orders={"Faixa / Indicador": ordem_x},
         color_discrete_map={
-            "Atrasos Preventiva": "#d62728",
-            "Atrasos Preditiva": "#ff7f0e",
-            "Preditivas": "#1f77b4",
-            "Preventivas": "#2ca02c",
+            "Atrasos Preventiva": "#C44E52",
+            "Atrasos Preditiva": "#DD8452",
+            "Preditivas": "#4C72B0",
+            "Preventivas": "#55A868",
         },
     )
     fig_consolidado.update_traces(textposition="outside")
@@ -439,17 +439,17 @@ def dashboard(df):
         fig_proj = go.Figure()
         fig_proj.add_trace(go.Scatter(
             x=datas, y=progresso_atual, mode="lines+markers", name="Ritmo Atual",
-            line=dict(color="#1f77b4", width=3), marker=dict(size=6, color="#1f77b4"),
+            line=dict(color="#4C72B0", width=3), marker=dict(size=6, color="#1f77b4"),
             hovertemplate="%{x|%d/%m/%Y}<br>Ritmo Atual: %{y}<extra></extra>",
         ))
         fig_proj.add_trace(go.Scatter(
             x=datas, y=progresso_meta, mode="lines+markers", name="Meta (3/dia)",
-            line=dict(color="#2ca02c", width=3), marker=dict(size=6, color="#2ca02c"),
+            line=dict(color="#55A868", width=3), marker=dict(size=6, color="#2ca02c"),
             hovertemplate="%{x|%d/%m/%Y}<br>Meta: %{y}<extra></extra>",
         ))
         fig_proj.add_trace(go.Scatter(
             x=datas, y=total_atrasadas, mode="lines", name="Total de Atrasadas",
-            line=dict(color="#7f7f7f", width=2, dash="dash"),
+            line=dict(color="#7F7F7F", width=2, dash="dash"),
             hovertemplate="%{x|%d/%m/%Y}<br>Total de Atrasadas: %{y}<extra></extra>",
         ))
 
